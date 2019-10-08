@@ -10,10 +10,23 @@ const env = require('./env');
 // Initial Config
 // ==============
 const app = express();
-const port = process.env.PORT || 3000;
+const port = env.PORT || 3000;
 const server = http.createServer(app);
 apolloServer.applyMiddleware({ app })
 app.use('/graphql', () => {})
+
+// =====================
+// Keep Heroku App awake
+// =====================
+setInterval(function() {
+    http.get(env.BACKEND_URL);
+}, 300000);
+
+// ========================
+// Redir from HTTP to HTTPS
+// ========================
+var redirectToHTTPS = require('express-http-to-https').redirectToHTTPS
+app.use(redirectToHTTPS([/localhost:(\d{4})/], [/\/insecure/], 301));
 
 // ====
 // CORS

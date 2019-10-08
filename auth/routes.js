@@ -1,8 +1,16 @@
 var express = require('express');
 var { registerMiddleware, validateMiddleware } = require('./index');
 var router = express.Router();
+var tokens = require('./tokens');
+var models = require('../models');
 
 module.exports = function(passport) {
+
+  router.post('/validate-token', tokens.validateMiddleware, async (req, res) => {
+    let user = await models.Users.findById(res.locals.user._id);
+    delete user.password;
+    res.send(user).status(200);
+  });
 
   router.post('/login',
     passport.authenticate('local'),
