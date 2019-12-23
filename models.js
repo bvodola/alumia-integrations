@@ -1,10 +1,12 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const env = require('./env');
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+const env = require("./env");
+const upsertMany = require("@meanie/mongoose-upsert-many");
 
 // ===============
 // Database Config
 // ===============
+mongoose.plugin(upsertMany);
 const Schema = mongoose.Schema;
 mongoose.Promise = global.Promise;
 const mongoosePromise = mongoose.connect(env.MONGO_URL, {
@@ -61,7 +63,7 @@ const actionsSchema = new Schema(
     idMemberCreator: String,
     type: String,
     date: String,
-    action_id: String,
+    action_id: { type: String },
     created: { type: Date, default: Date.now }
   },
   { strict: false }
@@ -74,7 +76,7 @@ const cardsSchema = new Schema(
     name: String,
     idShort: String,
     shortLink: String,
-    card_id: String,
+    card_id: { type: String },
     idMemberCreator: String,
     actions: [
       {
@@ -109,9 +111,9 @@ const flatCardsSchema = new Schema(
 );
 
 const models = {};
-models.Users = mongoose.model('users', usersSchema);
-models.Actions = mongoose.model('actions', actionsSchema);
-models.Cards = mongoose.model('cards', cardsSchema);
-models.FlatCards = mongoose.model('flatcards', flatCardsSchema);
+models.Users = mongoose.model("users", usersSchema);
+models.Actions = mongoose.model("actions", actionsSchema);
+models.Cards = mongoose.model("cards", cardsSchema);
+models.FlatCards = mongoose.model("flatcards", flatCardsSchema);
 
 module.exports = models;

@@ -4,26 +4,6 @@ const trello = require("./index");
 const models = require("../models");
 const sheets = require("../google/sheets");
 
-router.get("/actions/import/:fromDate", async (req, res) => {
-  try {
-    trello.importAllBoardActions();
-    res.sendStatus(200);
-  } catch (err) {
-    console.error("trello.js", err);
-    res.send(err).status(500);
-  }
-});
-
-router.get("/cards/create", async (req, res) => {
-  try {
-    trello.createCardsFromActions();
-    res.sendStatus(200);
-  } catch (err) {
-    console.error("trello.js", err);
-    res.send(err).status(500);
-  }
-});
-
 router.get("/board/lists", async (req, res) => {
   try {
     const lists = await trello.getBoardLists();
@@ -34,77 +14,127 @@ router.get("/board/lists", async (req, res) => {
   }
 });
 
-router.get("/cards/flat-json", async (req, res) => {
+router.get("/actions/import", async (req, res) => {
   try {
-    const cards = await trello.generateCardsJson();
-    var fs = require("fs");
-    fs.writeFileSync("data.json", cards, "utf8", () => console.log("cb"));
-
-    // res.send(JSON.parse(cards));
-    res.sendStatus(200);
+    const { before, fromDate } = req.query;
+    await trello.importAllBoardActions({ before, fromDate });
+    res.send("Started Trello Actions Import. Check node console.");
   } catch (err) {
     console.error("trello.js", err);
     res.send(err).status(500);
   }
 });
 
-// Complete version of cards/flat-json, including actions/import and cards/create
-router.get("/cards/import-and-generate-json/:fromDate?", async (req, res) => {
+router.get("/cards/import-and-generate-json/", async (req, res) => {
   try {
-    await models.Cards.deleteMany({});
-    await models.Actions.deleteMany({});
-    await trello.importAllBoardActions("", req.params.fromDate);
-    await trello.createCardsFromActions();
-    const cards = JSON.parse(await trello.generateCardsJson());
-    console.log("cards created");
-
-    const data = cards.map(entry => sheets.formatContactForGoogleSheet(entry));
-    sheets.appendToSheet({
-      sheetId: "1fAVcrsPy46P6-BTHEVSn_GkTlDqq8TkzHHjrwdt7uAk",
-      range: "Página1",
-      data
+    importAndGenerateSheet({
+      gte: req.query.gte,
+      lt: req.query.lt
     });
 
-    res.header("Content-Type", "application/json");
-    res.send(cards);
+    // res.header("Content-Type", "application/json");
+    // res.send(cards);
+    res.send("Started Import. Check node console");
   } catch (err) {
     console.error("trello.js", err);
     res.send(err).status(500);
   }
 });
 
-const importAndGenerateSheet = async (fromDate, since = "") => {
+router.get("/cards/export-to-sheets/", async (req, res) => {
   try {
-    await models.Cards.deleteMany({});
-    await models.Actions.deleteMany({});
-    await trello.importAllBoardActions("", fromDate, since);
-    await trello.createCardsFromActions();
-    const cards = JSON.parse(await trello.generateCardsJson());
-    console.log("cards created");
+    const cards = await models.Cards.find({});
+    await trello.exportCardsToSheet(cards);
+    res.send("Started Export. Check node console.");
+  } catch (err) {
+    console.error("trello.js", err);
+    res.send(err).status(500);
+  }
+});
 
-    const data = cards.map(entry => sheets.formatContactForGoogleSheet(entry));
+const importAndGenerateSheet = async ({ gte = "", lt = "" }) => {
+  try {
+    // await trello.importAllBoardActions({ before, fromDate });
+
+    console.log("=====================================");
+    console.log("Fetching all actions from database...");
+    let actions = await models.Actions.find({
+      date: { $gte: gte, $lt: lt },
+      $or: [
+        {
+          type: "updateCard",
+          "data.listBefore.id": { $exists: true }
+        },
+        {
+          type: "createCard",
+          "data.list.id": { $exists: true }
+        }
+      ]
+    });
+
+    console.log(`Fetched ${actions.length} actions`);
+
+    // // Remove duplicate values of actions
+    // console.log("Deleting duplicate actions...");
+    // for (const doc of actions) {
+    //   await models.Actions.deleteOne({
+    //     _id: { $lt: doc._id },
+    //     action_id: doc.action_id
+    //   });
+    // }
+
+    // // Fetching updated actions
+    // console.log("Fetching updated actions...");
+    // actions = await models.Actions.find({
+    //   $or: [
+    //     {
+    //       type: "updateCard",
+    //       "data.listBefore.id": { $exists: true }
+    //     },
+    //     {
+    //       type: "createCard",
+    //       "data.list.id": { $exists: true }
+    //     }
+    //   ]
+    // });
+
+    // Creating cards from the updated actions
+    await trello.createCardsFromActions(actions);
+
+    // // Deleting duplicated cards
+    // console.log("Deleting duplicate cards...");
+    // for (const doc of cards) {
+    //   await models.Cards.deleteOne({
+    //     _id: { $lt: doc._id },
+    //     card_id: doc.card_id
+    //   });
+    // }
+
+    // Fetching cards
+    console.log("fetching cards...");
+    cards = await models.Cards.find();
+
+    // Creating flatCard objects
+    console.log("creating flat cards...");
+    const flatCards = JSON.parse(await trello.generateCardsJson(cards));
+    console.log("flat cards created");
+
+    // Formatting flatCards to conform to the Google Sheets required pattern
+    const data = flatCards.map(entry =>
+      sheets.formatContactForGoogleSheet(entry)
+    );
+
+    // Appending cards to google sheet
     sheets.appendToSheet({
-      sheetId: "1fAVcrsPy46P6-BTHEVSn_GkTlDqq8TkzHHjrwdt7uAk",
+      sheetId: "1VaXW61ibPpzexWi5MJKeorPZ-fx485yfMe9FgjeOqYU",
       range: "Página1",
       data
     });
 
-    console.log("ok!");
+    console.log("importAndGenerateSheet finished");
   } catch (err) {
     console.error("trello.js", err);
   }
 };
-
-importAndGenerateSheet("2019-11-01");
-
-router.get("/actions/get", async (req, res) => {
-  try {
-    const actions = await trello.getAllBoardActions();
-    res.send(actions).status(200);
-  } catch (err) {
-    console.error("trello.js", err);
-    res.send(err).status(500);
-  }
-});
 
 module.exports = router;

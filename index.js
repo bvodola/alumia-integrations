@@ -8,6 +8,7 @@ const env = require("./env");
 const trelloRoutes = require("./trello/routes");
 const hubspotRoutes = require("./hubspot/routes");
 const googleRoutes = require("./google/routes");
+const mongo = require("./mongodb");
 
 require("./google/sheets");
 
@@ -45,6 +46,7 @@ app.use((req, res, next) => {
 
   if (app.settings.env !== "production")
     res.header("Access-Control-Allow-Origin", "*");
+
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.header(
     "Access-Control-Allow-Headers",
@@ -89,7 +91,11 @@ if (app.settings.env === "production") {
 // ======
 // Server
 // ======
-server.listen(port, () =>
-  console.log(`Listening on port ${port}, ${apolloServer.graphqlPath}`)
-);
+mongo.connect(err => {
+  if (err) console.error(err);
+  server.listen(port, () =>
+    console.log(`Listening on port ${port}, ${apolloServer.graphqlPath}`)
+  );
+});
+
 module.exports = app;

@@ -1,23 +1,22 @@
 const axios = require("axios");
 const env = require("../env");
 const models = require("../models");
+const mongo = require("../mongodb");
+const sheets = require("../google/sheets");
 
-const getAllBoardActions = async (before = "") => {
-  let boardActions = await getBoardActions(before);
-  if (Array.isArray(boardActions) && boardActions.length > 0) {
-    const newBefore = boardActions[boardActions.length - 1].id;
-    console.log("newBefore", newBefore);
-    const newBoardActions = await getAllBoardActions(newBefore);
-    console.log("newBoardActions", newBoardActions);
-    boardActions = [...boardActions, ...newBoardActions];
-  }
-  return boardActions;
+let LISTS_NAMES = {
+  "596cadb85a54699e4c89f9ab": "1. Call me maybe",
+  "5cc8452396a8913d53a4f1ed": "2. Não atendeu",
+  "5cfe68503b35c087eb203c4f": "3. Atendeu e não podia falar",
+  "5a0b1e9a539248a7aebc3e8b": "4. Desenvolvimento",
+  "5cbe3649a6286c06d72947a8": "5. Qualificado",
+  "5a0b1eb1749df89fbe2d75e7": "6. Pagamento"
 };
 
 // Call the API
-const getBoardActions = async (before = "", since = "") => {
+const getBoardActions = async (before = "") => {
   const res = await axios.get(
-    `http://api.trello.com/1/boards/${env.TRELLO_SOURCE_BOARD_ID}/actions?key=${env.TRELLO_API_KEY}&token=${env.TRELLO_TOKEN}&limit=1000&memberCreator=false&before=${before}&since=${since}`
+    `http://api.trello.com/1/boards/${env.TRELLO_SOURCE_BOARD_ID}/actions?key=${env.TRELLO_API_KEY}&token=${env.TRELLO_TOKEN}&limit=1000&memberCreator=false&before=${before}`
   );
   return res.data;
 };
@@ -29,65 +28,75 @@ const getBoardLists = async () => {
   return res.data;
 };
 
-const importAllBoardActions = async (
+const importAllBoardActions = async ({
   before = "",
   fromDate = null,
-  since = null
-) => {
-  console.log(before, fromDate);
-  if (before === "") {
-    console.log("Started Import", Date.now());
-  } else {
-    since = "";
-  }
-  let boardActions = await getBoardActions(before, since);
-
-  boardActions = boardActions.map(a => {
-    a.action_id = a.id;
-    return a;
-  });
-  await models.Actions.insertMany(boardActions);
-
-  // TODO: Fix action that checks maximum before date to get
-  if (Array.isArray(boardActions) && boardActions.length > 0) {
-    const lastBoardActionDate = boardActions[boardActions.length - 1].date;
-    console.log(lastBoardActionDate);
-    if (
-      !fromDate ||
-      (fromDate && new Date(fromDate) <= new Date(lastBoardActionDate))
-    ) {
-      const newBefore = boardActions[boardActions.length - 1].id;
-      await importAllBoardActions(newBefore, fromDate);
-    }
-  }
-  if (before === "") console.log("Ended Import", Date.now());
-};
-
-const createCardsFromActions = async () => {
+  firstCall = true
+}) => {
   try {
-    console.log("createCardsFromActions");
+    // Logging the import process startup
+    if (firstCall) {
+      console.log(
+        `======= Started Import at ${Date.now()}, fromDate: ${fromDate} =======`
+      );
+    }
 
-    // Find actions (imported from Trello API) that have listBefore or list parameters
-    const actions = await models.Actions.find({
-      $or: [
-        {
-          type: "updateCard",
-          "data.listBefore.id": { $exists: true }
-        },
-        {
-          type: "createCard",
-          "data.list.id": { $exists: true }
-        }
-      ]
+    // Logging each API call with it's before argument
+    console.log(`Calling API... before: ${before} `);
+
+    // Calling the trello API
+    let boardActions = await getBoardActions(before);
+
+    // Rename the action id parameter for each element of the actions array
+    boardActions = boardActions.map(a => {
+      a.action_id = a.id;
+      return a;
     });
 
-    console.log(1);
+    // Insert the recently fetched actions to the database
+    await models.Actions.insertMany(boardActions);
 
-    // Get all the current cards on local database
-    let cards = await models.Cards.find({});
+    // If we haven't reached the fromDate limit, make a
+    // new fetch and continue the actions loop
+    const lastBoardAction = boardActions[boardActions.length - 1];
+    if (Array.isArray(boardActions) && boardActions.length > 0) {
+      if (
+        !fromDate ||
+        (fromDate && new Date(fromDate) <= new Date(lastBoardAction.date))
+      ) {
+        const newBefore = lastBoardAction.id;
+        await importAllBoardActions({
+          before: newBefore,
+          fromDate,
+          firstCall: false
+        });
+      }
+    }
+
+    // When we reach this point on the first interaction of the loop,
+    // we have reached the end of the import, so we log that
+    if (firstCall) console.log("Ended Import at", Date.now());
+  } catch (err) {
+    console.error("ERROR: trello -> importAllBoardActions", err.message);
+  }
+};
+
+const createCardsFromActions = async actions => {
+  try {
+    console.log("createCardsFromActions");
+    const db = mongo.getDb();
+    let cards = await db
+      .collection("cards")
+      .find({})
+      .toArray();
 
     // Add action to existing card or create new card with action
-    actions.forEach(action => {
+    actions.forEach((action, i) => {
+      // Logging progress on console
+      process.stdout.clearLine();
+      process.stdout.cursorTo(0);
+      process.stdout.write(`${i + 1}/${actions.length}`);
+
       const currentCard = action.data.card;
       let cardIndex = cards.findIndex(c => c.card_id === currentCard.id);
 
@@ -119,47 +128,85 @@ const createCardsFromActions = async () => {
       } else {
         const currentCard = cards[cardIndex];
 
-        cards[cardIndex] = {
-          ...currentCard,
-          actions: [
-            ...currentCard.actions,
-            {
-              action_id: action.action_id,
-              action_type: action.type,
-              date: action.date,
-              list: action.data.list,
-              listBefore: action.data.listBefore,
-              listAfter: action.data.listAfter
-            }
-          ]
-        };
+        const duplicatedAction =
+          currentCard.actions.findIndex(
+            a => a.action_id === action.action_id
+          ) >= 0;
+
+        if (!duplicatedAction) {
+          cards[cardIndex] = {
+            ...currentCard,
+            actions: [
+              ...currentCard.actions,
+              {
+                action_id: action.action_id,
+                action_type: action.type,
+                date: action.date,
+                list: action.data.list,
+                listBefore: action.data.listBefore,
+                listAfter: action.data.listAfter
+              }
+            ]
+          };
+        }
       }
     });
-    console.log(2);
+
     // Delete all $init props from card objects
     cards = cards.map(c => {
       delete c["$init"];
+      delete c["__v"];
+      // delete c["$__"];
       return c;
     });
-    console.log(3);
-    await models.Cards.insertMany(cards);
-    console.log(4);
-    console.log("Cards imported");
+
+    console.log(`- ${cards.length} cards generated will be saved...`);
+    // const db = mongo.getDb();
+    for (const card of cards) {
+      await db.collection("cards").updateOne(
+        {
+          card_id: card.card_id
+        },
+        {
+          $set: card
+        },
+        {
+          upsert: true
+        }
+      );
+      process.stdout.clearLine();
+      process.stdout.cursorTo(0);
+      process.stdout.write(card.card_id);
+    }
+
+    console.log(" Cards imported");
   } catch (err) {
-    console.error("trello.createCardsFromActions()", err);
+    console.error("trello -> createCardsFromActions", err);
   }
 };
 
 const getCreatedDateFromId = id =>
   new Date(1000 * parseInt(id.substring(0, 8), 16));
 
-let LISTS_NAMES = {
-  "596cadb85a54699e4c89f9ab": "1. Call me maybe",
-  "5cc8452396a8913d53a4f1ed": "2. Não atendeu",
-  "5cfe68503b35c087eb203c4f": "3. Atendeu e não podia falar",
-  "5a0b1e9a539248a7aebc3e8b": "4. Desenvolvimento",
-  "5cbe3649a6286c06d72947a8": "5. Qualificado",
-  "5a0b1eb1749df89fbe2d75e7": "6. Pagamento"
+const generateCardsJson = async cards => {
+  const LISTS_TEMPLATE = {
+    "596cadb85a54699e4c89f9ab": "N",
+    "Tempo (1)": 0,
+    "5cc8452396a8913d53a4f1ed": "N",
+    "Tempo (2)": 0,
+    "5cfe68503b35c087eb203c4f": "N",
+    "Tempo (3)": 0,
+    "5a0b1e9a539248a7aebc3e8b": "N",
+    "Tempo (4)": 0,
+    "5cbe3649a6286c06d72947a8": "N",
+    "Tempo (5)": 0,
+    "5a0b1eb1749df89fbe2d75e7": "N",
+    "Tempo (6)": 0
+  };
+
+  return JSON.stringify(
+    cards.map(c => generateFlatCardObject(c, LISTS_TEMPLATE))
+  );
 };
 
 const generateFlatCardObject = (card, LISTS_TEMPLATE) => {
@@ -287,40 +334,30 @@ const generateFlatCardObject = (card, LISTS_TEMPLATE) => {
   };
 };
 
-const generateCardsJson = async () => {
-  const cards = await models.Cards.find();
-  // const boardLists = await getBoardLists();
+const exportCardsToSheet = async cards => {
+  // Creating flatCard objects
+  console.log("creating flat cards...");
+  const flatCards = JSON.parse(await generateCardsJson(cards));
+  console.log("flat cards created. exporting to google sheets.");
 
-  // let lists = {};
-  // boardLists.forEach(boardList => {
-  //   lists[boardList.name] = [];
-  // });
-
-  const LISTS_TEMPLATE = {
-    "596cadb85a54699e4c89f9ab": "N",
-    "Tempo (1)": 0,
-    "5cc8452396a8913d53a4f1ed": "N",
-    "Tempo (2)": 0,
-    "5cfe68503b35c087eb203c4f": "N",
-    "Tempo (3)": 0,
-    "5a0b1e9a539248a7aebc3e8b": "N",
-    "Tempo (4)": 0,
-    "5cbe3649a6286c06d72947a8": "N",
-    "Tempo (5)": 0,
-    "5a0b1eb1749df89fbe2d75e7": "N",
-    "Tempo (6)": 0
-  };
-
-  return JSON.stringify(
-    cards.map(c => generateFlatCardObject(c, LISTS_TEMPLATE))
+  // Formatting flatCards to conform to the Google Sheets required pattern
+  const data = flatCards.map(entry =>
+    sheets.formatContactForGoogleSheet(entry)
   );
+
+  // Appending cards to google sheet
+  sheets.appendToSheet({
+    sheetId: "1VaXW61ibPpzexWi5MJKeorPZ-fx485yfMe9FgjeOqYU",
+    range: "Página1",
+    data
+  });
 };
 
 module.exports = {
-  getAllBoardActions,
   getBoardActions,
   importAllBoardActions,
   createCardsFromActions,
   generateCardsJson,
-  getBoardLists
+  getBoardLists,
+  exportCardsToSheet
 };
