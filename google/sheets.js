@@ -13,6 +13,12 @@ const SCOPES = [
 // time.
 const TOKEN_PATH = path.resolve(__dirname, "./token.json");
 
+/**
+ * Appends data to google sheet with sheetId on specified range
+ * @param {String} sheetId
+ * @param {String} range
+ * @param {Array} data
+ */
 function appendToSheet({ sheetId, range, data }) {
   // Load client secrets from a local file.
   fs.readFile(path.resolve(__dirname, "./credentials.json"), (err, content) => {
