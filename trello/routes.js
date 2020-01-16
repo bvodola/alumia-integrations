@@ -52,6 +52,73 @@ router.get("/cards/export-to-sheets/", async (req, res) => {
   }
 });
 
+/**
+ * Gets board cards with nested actions
+ * @param boardLinkId [URL Param] linkId of the board we want to get the actions from
+ */
+router.get("/board/:boardId/cards/", async (req, res) => {
+  try {
+    const { boardId } = req.params;
+    const { before } = req.query;
+
+    const data = await trello.getAllBoardCards({ boardId, before });
+    res.send(data).status(200);
+  } catch (err) {
+    console.error("ERROR: route board/:boardId/cards/", err);
+    res.send(err.message).status(500);
+  }
+});
+
+router.get("/board/:boardId/report/", async (req, res) => {
+  try {
+    const { boardId } = req.params;
+
+    const data = await trello.generateBoardReport(boardId);
+    res.send(data).status(200);
+  } catch (err) {
+    console.error("ERROR: route board/:boardId/report/", err.message);
+    res.send(err.message).status(500);
+  }
+});
+
+router.get("/list/:listId/report/", async (req, res) => {
+  try {
+    const { listId } = req.params;
+
+    const data = await trello.generateListReport(listId);
+    res.send(data).status(200);
+  } catch (err) {
+    console.error("ERROR: route list/:listId/report/", err);
+    res.send(err.message).status(500);
+  }
+});
+
+router.get("/boards/report/", async (req, res) => {
+  try {
+    await trello.generateAllBoardsReport();
+    res.send("OK").status(200);
+  } catch (err) {
+    console.error("ERROR: route board/:boardId/report/", err.message);
+    res.send(err.message).status(500);
+  }
+});
+
+/**
+ * Update the board a card belongs to
+ * @param cardId [URL Param] the id of the card to be updated
+ * @param newBoardId [URL Param] the id of the board to put the card on
+ */
+router.put("/card/:cardId/:newBoardId/", async (req, res) => {
+  try {
+    const { cardId, newBoardId } = req.params;
+    const data = await trello.updateCardBoard({ cardId, newBoardId });
+    res.send(data.data).status(200);
+  } catch (err) {
+    console.error("ERROR: route /card/:cardId/:newBoardId/", err);
+    res.send(err.message).status(500);
+  }
+});
+
 const importAndGenerateSheet = async ({ gte = "", lt = "" }) => {
   try {
     // await trello.importAllBoardActions({ before, fromDate });
@@ -138,3 +205,6 @@ const importAndGenerateSheet = async ({ gte = "", lt = "" }) => {
 };
 
 module.exports = router;
+
+// Board reaquecimento: 5a1da0d5d191c562c67e97aa
+// Board Evolucao CRM: 596cadac4bbb2855dec4faa4

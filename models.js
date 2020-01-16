@@ -110,10 +110,18 @@ const flatCardsSchema = new Schema(
   { strict: false }
 );
 
+const listsSchema = new Schema(
+  {
+    created: { type: Date, default: Date.now }
+  },
+  { strict: false }
+);
+
 const models = {};
 models.Users = mongoose.model("users", usersSchema);
 models.Actions = mongoose.model("actions", actionsSchema);
 models.Cards = mongoose.model("cards", cardsSchema);
 models.FlatCards = mongoose.model("flatcards", flatCardsSchema);
+models.Lists = mongoose.model("lists", listsSchema);
 
 module.exports = models;

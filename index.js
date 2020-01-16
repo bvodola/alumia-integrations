@@ -16,7 +16,7 @@ require("./google/sheets");
 // Initial Config
 // ==============
 const app = express();
-const port = env.PORT || 2000;
+const port = env.PORT || 3000;
 const server = http.createServer(app);
 apolloServer.applyMiddleware({ app });
 app.use("/graphql", () => {});

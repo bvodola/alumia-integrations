@@ -103,6 +103,11 @@ function _appendToSheet(auth, { sheetId, range, data }) {
   );
 }
 
+/**
+ * Simple contact formatting for displaying on Google Sheet
+ * @param {Object} contact
+ * @returns {Object} Google Sheets formatted contact
+ */
 const formatContactForGoogleSheet = contact =>
   Object.keys(contact).map(key => contact[key]);
 
