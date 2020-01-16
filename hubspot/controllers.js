@@ -41,11 +41,31 @@ const getContactsDetailedInfo = async contacts => {
       `https://api.hubapi.com/contacts/v1/contact/vids/batch/?hapikey=${env.HUBSPOT_API_KEY}${vidsParam}`
     );
 
-    const detailedContacts = Object.keys(res.data).map(key => res.data[key]);
+    let detailedContacts = Object.keys(res.data).map(key => res.data[key]);
+    detailedContacts = insertAddedDateOnDetailedContacts(
+      contacts,
+      detailedContacts
+    );
     return detailedContacts;
   } catch (err) {
     console.log("hubspot/controllers -> getContactsDetailedInfo()", err);
   }
+};
+
+/**
+ * Insert addedAt prop from contacts to detailedContacts
+ * @param {Array} contacts
+ * @param {Array} detailedContacts
+ * @returns {Array} detailedContacts with the added property
+ */
+const insertAddedDateOnDetailedContacts = (contacts, detailedContacts) => {
+  return detailedContacts.map(dc => {
+    contact = contacts.find(c => c.vid === dc.vid);
+    return {
+      ...dc,
+      addedAt: contact.addedAt
+    };
+  });
 };
 
 /**
@@ -69,6 +89,16 @@ const formatContact = contact => {
     contact["form-submissions"][0] &&
     contact["form-submissions"][0]["page-url"];
 
+  // Format the addedAt date
+  const withZeros = num => String(num).padStart(2, "0");
+  const d = new Date(contact.addedAt);
+  const addedAt = `${withZeros(d.getDate())}/${withZeros(
+    d.getMonth() + 1
+  )}/${withZeros(d.getFullYear())} - ${withZeros(d.getHours())}:${withZeros(
+    d.getMinutes()
+  )}`;
+
+  // Start populating the formatted contact object
   if (
     hs_analytics_first_url ||
     hs_analytics_last_url ||
@@ -114,6 +144,7 @@ const formatContact = contact => {
     // Setup the formatted contact output object
     let formattedContact = {
       id: contact.vid,
+      addedAt,
       hs_url: contact["profile-url"],
       institution,
       utm_source: source,
@@ -168,8 +199,9 @@ const formatAndAppendToSheet = (data, sheetId, range = "Página1") => {
  * @param {Number} vidOffset Pagination parameter to define the first vid to be fetched
  * @param {Number} timeOffset Pagination parameter to define the first datetime to be fetched
  * @param {Number} vidStop Pagination parameter to define the last vid to be fetched
- * @param {Array} contacts Contacts fetched on a previous loop iteraction are stored here
+ * @param {Number} timeStop Pagination parameter to define the last timeStamp to be fetched
  * @param {Object} sheet Contains 2 props: sheetId and range of the google sheet we will append to
+ * @param {Array} contacts Contacts fetched on a previous loop iteraction are stored here
  *
  * @returns {Array} All the looped contacts
  */
@@ -177,10 +209,12 @@ const loopContacts = async (
   vidOffset = null,
   timeOffset = null,
   vidStop = null,
-  contacts = [],
-  sheet
+  timeStop = null,
+  sheet,
+  contacts = []
 ) => {
   try {
+    console.log(timeStop);
     // Fetching getContacts() with given parameters
     const contactsData = await getContacts(vidOffset, timeOffset);
 
@@ -189,11 +223,22 @@ const loopContacts = async (
       contactsData.contacts
     );
 
+    // Check if we have the timeStop condition and find its index on the array
+    const timeStopIndex = contactsDetailedInfo.findIndex(
+      c => c.addedAt <= timeStop
+    );
+
+    // Slice the array in case of a timeStop condition
+    let newContacts =
+      timeStopIndex !== -1
+        ? contactsDetailedInfo.slice(0, timeStopIndex)
+        : contactsDetailedInfo;
+
     // Check if we have the vidStop condition and find its index on the array
     const vidStopIndex = contactsDetailedInfo.findIndex(c => c.vid === vidStop);
 
     // Slice the array in case of a vidStop condition
-    let newContacts =
+    newContacts =
       vidStopIndex !== -1
         ? contactsDetailedInfo.slice(0, vidStopIndex)
         : contactsDetailedInfo;
@@ -208,13 +253,18 @@ const loopContacts = async (
     contacts = [...contacts, ...newContacts];
 
     // Check if we need to keep looping for more contacts
-    if (contactsData["has-more"] && vidStopIndex === -1) {
+    if (
+      contactsData["has-more"] &&
+      vidStopIndex === -1 &&
+      timeStopIndex === -1
+    ) {
       contacts = await loopContacts(
         contactsData["vid-offset"],
         contactsData["time-offset"],
         vidStop,
-        contacts,
-        sheet
+        timeStop,
+        sheet,
+        contacts
       );
     }
 
