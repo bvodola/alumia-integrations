@@ -1,9 +1,10 @@
 const MongoClient = require("mongodb").MongoClient;
+const env = require("./env");
 
 // Connection URL
-const url = "mongodb://localhost:27017";
+const url = env.MONGO_URL;
 // Database Name
-const dbName = "alumia";
+const dbName = env.MONGO_DB_NAME;
 // Create a new MongoClient
 const client = new MongoClient(url, {
   useNewUrlParser: true,

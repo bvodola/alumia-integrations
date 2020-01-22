@@ -9,7 +9,7 @@ const upsertMany = require("@meanie/mongoose-upsert-many");
 mongoose.plugin(upsertMany);
 const Schema = mongoose.Schema;
 mongoose.Promise = global.Promise;
-const mongoosePromise = mongoose.connect(env.MONGO_URL, {
+const mongoosePromise = mongoose.connect(`${env.MONGO_URL}`, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 });
