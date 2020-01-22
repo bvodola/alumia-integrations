@@ -69,11 +69,40 @@ const insertAddedDateOnDetailedContacts = (contacts, detailedContacts) => {
 };
 
 /**
+ * Returns a date in the DD/MM/YYYY - HH:mm format and as a string
+ * @param {Date|String} date
+ * @returns {String} the formatted date string
+ */
+const formattedDate = date => {
+  // Small helper that adds trailing zeros
+  const withZeros = num => String(num).padStart(2, "0");
+
+  // Create New data object from the addedAt prop
+  const d = new Date(date);
+
+  // Format the addedAt date string
+  const formattedDate = `${withZeros(d.getDate())}/${withZeros(
+    d.getMonth() + 1
+  )}/${withZeros(d.getFullYear())} - ${withZeros(d.getHours())}:${withZeros(
+    d.getMinutes()
+  )}`;
+
+  return formattedDate;
+};
+
+/**
  * Formats each contact as a flat object, on the needed format for our report
  * @param {Object} contact
  * @returns {Object} the formatted contact
  */
 const formatContact = contact => {
+  // Formatted contact initial template
+  let formattedContact = {
+    id: contact.vid,
+    hs_url: contact["profile-url"],
+    addedAt: formattedDate(contact.addedAt)
+  };
+
   // Get HubSpot parameteres needed for the report
   const {
     hs_analytics_first_url,
@@ -88,15 +117,6 @@ const formatContact = contact => {
   const form_submission_page =
     contact["form-submissions"][0] &&
     contact["form-submissions"][0]["page-url"];
-
-  // Format the addedAt date
-  const withZeros = num => String(num).padStart(2, "0");
-  const d = new Date(contact.addedAt);
-  const addedAt = `${withZeros(d.getDate())}/${withZeros(
-    d.getMonth() + 1
-  )}/${withZeros(d.getFullYear())} - ${withZeros(d.getHours())}:${withZeros(
-    d.getMinutes()
-  )}`;
 
   // Start populating the formatted contact object
   if (
@@ -142,10 +162,8 @@ const formatContact = contact => {
     let source = queryParams.utm_source;
 
     // Setup the formatted contact output object
-    let formattedContact = {
-      id: contact.vid,
-      addedAt,
-      hs_url: contact["profile-url"],
+    formattedContact = {
+      ...formattedContact,
       institution,
       utm_source: source,
       utm_campaign: queryParams.utm_campaign,
@@ -170,11 +188,9 @@ const formatContact = contact => {
       if (hs_analytics_source_data_2)
         formattedContact.utm_campaign = hs_analytics_source_data_2.value;
     }
-
-    return formattedContact;
   }
 
-  return {};
+  return formattedContact;
 };
 
 /**
@@ -214,9 +230,11 @@ const loopContacts = async (
   contacts = []
 ) => {
   try {
-    console.log(timeStop);
     // Fetching getContacts() with given parameters
+    console.log("=======================================");
     const contactsData = await getContacts(vidOffset, timeOffset);
+    console.log("vidOffset", vidOffset, "timeOffset", timeOffset);
+    console.log("contactsData.contacts.length", contactsData.contacts.length);
 
     // Getting detailed info about each contact
     const contactsDetailedInfo = await getContactsDetailedInfo(
@@ -244,10 +262,10 @@ const loopContacts = async (
         : contactsDetailedInfo;
 
     // Parse contacts to the required format
-    newContacts = newContacts.map(c => formatContact(c));
+    const formattedContacts = newContacts.map(c => formatContact(c));
 
     // Appends the newly fetched contacts to google sheet
-    formatAndAppendToSheet(newContacts, sheet.sheetId, sheet.range);
+    formatAndAppendToSheet(formattedContacts, sheet.sheetId, sheet.range);
 
     // Concat contacts array with most recent fetch
     contacts = [...contacts, ...newContacts];
@@ -275,3 +293,5 @@ const loopContacts = async (
 };
 
 module.exports = { loopContacts };
+
+// 3923451;
