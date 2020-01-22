@@ -31,8 +31,8 @@ setInterval(function() {
 // ========================
 // Redir from HTTP to HTTPS
 // ========================
-var redirectToHTTPS = require("express-http-to-https").redirectToHTTPS;
-app.use(redirectToHTTPS([/localhost:(\d{4})/], [/\/insecure/], 301));
+// var redirectToHTTPS = require("express-http-to-https").redirectToHTTPS;
+// app.use(redirectToHTTPS([/localhost:(\d{4})/], [/\/insecure/], 301));
 
 // ====
 // CORS
