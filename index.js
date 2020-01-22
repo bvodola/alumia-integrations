@@ -1,5 +1,6 @@
 const express = require("express");
 const http = require("http");
+const https = require("https");
 const bodyParser = require("body-parser");
 const passport = require("passport");
 const session = require("cookie-session");
@@ -24,15 +25,17 @@ app.use("/graphql", () => {});
 // =====================
 // Keep Heroku App awake
 // =====================
-setInterval(function() {
-  http.get(env.BACKEND_URL);
-}, 300000);
+if (app.settings.env === "production") {
+  setInterval(function() {
+    https.get(env.BACKEND_URL);
+  }, 300000);
+}
 
 // ========================
 // Redir from HTTP to HTTPS
 // ========================
-// var redirectToHTTPS = require("express-http-to-https").redirectToHTTPS;
-// app.use(redirectToHTTPS([/localhost:(\d{4})/], [/\/insecure/], 301));
+var redirectToHTTPS = require("express-http-to-https").redirectToHTTPS;
+app.use(redirectToHTTPS([/localhost:(\d{4})/], [/\/insecure/], 301));
 
 // ====
 // CORS
