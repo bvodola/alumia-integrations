@@ -95,7 +95,7 @@ router.get("/list/:listId/report/", async (req, res) => {
 
 router.get("/boards/report/", async (req, res) => {
   try {
-    await trello.generateAllBoardsReport();
+    await trello.generateBoardReport();
     res.send("OK").status(200);
   } catch (err) {
     console.error("ERROR: route board/:boardId/report/", err.message);

@@ -69,7 +69,7 @@ const getBoardActions = async (before = "") => {
  */
 const getBoardLists = async boardId => {
   const res = await axios.get(
-    `http://api.trello.com/1/boards/${boardId}/lists?key=${env.TRELLO_API_KEY}&token=${env.TRELLO_TOKEN}&limit=1000`
+    `http://api.trello.com/1/boards/${boardId}/lists/all?key=${env.TRELLO_API_KEY}&token=${env.TRELLO_TOKEN}&limit=1000`
   );
   return res.data;
 };
@@ -539,69 +539,50 @@ function extractEmail(text) {
  * for one board
  * @param {string} boardId
  */
-const generateBoardReport = async boardId => {
+const generateBoardReport = async (boardId = DEFAULT_BOARD_ID) => {
   console.log(`Starting boardId: ${boardId}`);
 
   // Set the database variable
   const db = mongo.getDb();
   let boardLists;
+
   // Get all the lists from board
   try {
     boardLists = await getBoardLists(boardId);
   } catch (err) {
     // Show error in case Trello API fails
     console.log(`erro ao puxar listas do board ${boardId}`);
-    throw err.message;
-
-    // Call generateBoardReport again.
-    // generateBoardReport(boardId);
+    throw err;
   }
-
-  // Get the array of listIds that are prone to error when moving
-  let lists = await db
-    .collection("lists")
-    .find({})
-    .toArray();
 
   for (list of boardLists) {
     // Check if the list is marked as prone to error on database
-    if (lists.indexOf(list.id) === -1) {
-      if (boardId !== DEFAULT_BOARD_ID) {
-        try {
-          // Move list to Evolução CRM
-          console.log("lista:", list.name, list.id);
-          console.log("movendo lista...");
-          await updateList(list.id, DEFAULT_BOARD_ID);
-          console.log("lista movida");
 
-          // Fetch cards
-          let cards = await getAllBoardCards({ boardId: list.id });
-          console.log(`${cards.length} cards fetched for list ${list.name}`);
-          console.log(cards.map(c => c.idShort));
+    try {
+      // Fetch cards
+      let cards = await getAllBoardCards({ boardId: list.id });
+      console.log(`${cards.length} cards fetched for list ${list.name}`);
 
-          // Flatten cards
-          const newflatCards = cards.map(card => {
-            // Extract email and add to property
-            card.email = extractEmail(card.desc);
+      // Flatten cards
+      const newflatCards = cards.map(card => {
+        // Extract email and add to property
+        card.email = extractEmail(card.desc);
 
-            // Calculates interval on each column for each card and prints on sheet
-            flatCard = generateFlatCardObject(card);
+        // Calculates interval on each column for each card and prints on sheet
+        flatCard = generateFlatCardObject(card);
 
-            // Returns the modified array element
-            return flatCard;
-          });
+        // Returns the modified array element
+        return flatCard;
+      });
 
-          // Export to GSheets
-          exportCardsToSheet(
-            newflatCards,
-            "1JmPJP3PA2RursCfBmxv0UoAgt0X1FLYtR5sV3TtR-1E"
-          );
-        } catch (err) {
-          console.log(`erro ao mover lista ${list.id}.`, err.message);
-
-          throw err.message;
-        }
-      }
+      // Export to GSheets
+      exportCardsToSheet(
+        newflatCards,
+        "1MZklooHFQf0y5iaemZQwakfw_NBhb_xCT05rdqzUCjE"
+      );
+    } catch (err) {
+      console.log(`erro no relatório da lista ${list.id}.`, err.message);
+      throw err;
     }
   }
 
