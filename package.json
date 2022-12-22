@@ -25,7 +25,7 @@
     "express-http-to-https": "^1.1.4",
     "google-ads-api": "^3.5.0",
     "googleapis": "^45.0.0",
-    "jsonwebtoken": "^8.5.1",
+    "jsonwebtoken": "^9.0.0",
     "mongodb": "^3.4.0",
     "mongoose": "^5.7.1",
     "node-adwords": "^201809.0.2",
